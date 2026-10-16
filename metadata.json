@@ -1,0 +1,6 @@
+{
+  "name": "ProxXQuepus",
+  "description": "Fast, premium native Android media browser and file manager for discovering and playing media in hidden folders without modifying original files.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

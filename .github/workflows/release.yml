@@ -1,0 +1,86 @@
+name: Build & Publish Release APK
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version tag (e.g. v1.0.1)'
+        required: false
+        default: 'v1.0.1'
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.3.1'
+
+      - name: Prepare build environment
+        run: |
+          touch .env .env.example
+          echo 'GEMINI_API_KEY=""' > .env
+          echo 'GEMINI_API_KEY=""' > .env.example
+          # Accept SDK licenses automatically
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses 2>/dev/null || true
+          # Ensure a signing keystore exists so release packaging never fails
+          if [ ! -f debug.keystore ]; then
+            keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+          fi
+
+      - name: Build Release APK
+        run: gradle :app:assembleRelease --no-daemon --stacktrace
+
+      - name: Prepare Release Artifact
+        run: |
+          mkdir -p release-output
+          APK_PATH=$(find app/build/outputs/apk/ -type f -name "*release*.apk" | head -n 1)
+          if [ -z "$APK_PATH" ]; then
+            APK_PATH=$(find app/build/outputs/apk/ -type f -name "*.apk" | head -n 1)
+          fi
+          echo "Found APK at: $APK_PATH"
+          TAG_NAME="${{ github.ref_type == 'tag' && github.ref_name || (inputs.version || 'v1.0.1') }}"
+          cp "$APK_PATH" release-output/ProxXQuepus-release.apk
+          cp "$APK_PATH" release-output/ProxXQuepus-v1.0.1.apk
+          cp "$APK_PATH" "release-output/ProxXQuepus-${TAG_NAME}.apk"
+          ls -lh release-output/
+
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ProxXQuepus-release-apk
+          path: release-output/*.apk
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || (inputs.version || 'v1.0.1') }}
+          name: ProxXQuepus ${{ github.ref_type == 'tag' && github.ref_name || (inputs.version || 'v1.0.1') }}
+          files: |
+            release-output/ProxXQuepus-release.apk
+            release-output/ProxXQuepus-v1.0.1.apk
+            release-output/*.apk
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
